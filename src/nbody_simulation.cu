@@ -205,6 +205,10 @@ void NBodySimulation::setSoftening(float new_softening) {
   }
 }
 
+int NBodySimulation::getParticleCount() const {
+  return particles ? particles->getNumParticles() : 0;
+}
+
 void NBodySimulation::updateTimers() {
   float frame_time_ms;
   checkCudaError(cudaEventElapsedTime(&frame_time_ms, start_event, stop_event),

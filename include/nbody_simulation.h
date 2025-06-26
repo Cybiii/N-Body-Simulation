@@ -29,6 +29,7 @@ public:
 
   // Getters
   ParticleSystem *getParticleSystem() { return particles; }
+  int getParticleCount() const;
   float getDt() const { return dt; }
   float getSoftening() const { return softening; }
   Algorithm getAlgorithm() const { return algorithm; }

@@ -3,30 +3,20 @@
 #include <iostream>
 #include <vector>
 
+// Forward declare the function that will run the GUI
+void run_simulation_with_gui(NBodySimulation &sim);
+
 void runSimpleDemo() {
-  std::cout << "\n=== Simple N-Body Demo ===" << std::endl;
+  const int N = 8192;
+  std::cout << "\n--- Running Simple Sphere Demo with Visualization (N=" << N
+            << ") ---" << std::endl;
 
-  const int N = 1000;
-  const int timesteps = 100;
-
-  // Create simulation
-  NBodySimulation sim(N, NBodySimulation::BARNES_HUT, 0.01f, 0.1f);
-
-  // Generate initial conditions
+  NBodySimulation sim(N, NBodySimulation::BARNES_HUT);
   InitialConditions::generateRandomSphere(*sim.getParticleSystem(), 5.0f, 1.0f);
 
-  // Copy to device
   sim.getParticleSystem()->copyToDevice();
 
-  // Print initial statistics
-  sim.getParticleSystem()->printStatistics();
-
-  // Run simulation
-  sim.simulate(timesteps);
-
-  // Copy back to host and print final statistics
-  sim.getParticleSystem()->copyToHost();
-  sim.getParticleSystem()->printStatistics();
+  run_simulation_with_gui(sim);
 }
 
 void runGalaxyDemo() {
@@ -122,8 +112,8 @@ void printUsage(const char *program_name) {
 
 int main(int argc, char *argv[]) {
   std::cout << "===============================================" << std::endl;
-  std::cout << "    GPU N-Body Simulation - Phase 3 Complete" << std::endl;
-  std::cout << "    Barnes-Hut O(N log N) Implementation" << std::endl;
+  std::cout << "    GPU N-Body Simulation - Phase 4: Visualization"
+            << std::endl;
   std::cout << "===============================================" << std::endl;
 
   // Check CUDA device
@@ -145,39 +135,17 @@ int main(int argc, char *argv[]) {
             << std::endl;
   std::cout << std::endl;
 
-  // Parse command line arguments
-  std::string mode = "all";
-  if (argc >= 2) {
-    mode = argv[1];
-  }
-
+  // For now, we will just run the simple demo.
+  // Command-line parsing can be re-added later.
   try {
-    if (mode == "simple") {
-      runSimpleDemo();
-    } else if (mode == "galaxy") {
-      runGalaxyDemo();
-    } else if (mode == "collision") {
-      runCollidingClustersDemo();
-    } else if (mode == "benchmark") {
-      runBenchmark();
-    } else if (mode == "all") {
-      runSimpleDemo();
-      runGalaxyDemo();
-      runCollidingClustersDemo();
-      runBenchmark();
-    } else {
-      std::cout << "Unknown option: " << mode << std::endl;
-      printUsage(argv[0]);
-      return 1;
-    }
+    runSimpleDemo();
   } catch (const std::exception &e) {
-    std::cerr << "Error: " << e.what() << std::endl;
+    std::cerr << "An error occurred: " << e.what() << std::endl;
     return 1;
   }
 
   std::cout << "\n===============================================" << std::endl;
-  std::cout << "    Project Development Complete!" << std::endl;
-  std::cout << "    All phases (1, 2, and 3) are implemented." << std::endl;
+  std::cout << "    Simulation Complete" << std::endl;
   std::cout << "===============================================" << std::endl;
 
   return 0;

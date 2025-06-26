@@ -17,4 +17,4 @@ echo =================================================================
 
 rem Start a new cmd instance, call vcvars64.bat to set up the environment,
 rem then execute our build and run commands.
-cmd /k "%VS_DEV_CMD_PATH% && cd /d %PROJECT_DIR% && echo. && echo Running simulation... && build\\bin\\Release\\nbody_simulation.exe" 
+cmd /k "%VS_DEV_CMD_PATH% && cd /d %PROJECT_DIR% && echo. && echo Running simulation... && build\\bin\\Release\\nbody_simulation.exe --particles 100000" 

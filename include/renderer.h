@@ -58,10 +58,8 @@ private:
   // OpenGL state
   GLuint shader_program;
   GLuint vao;
-
-  // CUDA-OpenGL Interop
-  GLuint pbo = 0; // OpenGL pixel buffer object
-  cudaGraphicsResource_t cuda_pbo_resource = nullptr; // CUDA graphics resource
+  GLuint vbo = 0; // Vertex Buffer Object for positions and colors
+  cudaGraphicsResource_t cuda_vbo_resource = nullptr; // CUDA graphics resource
 
   void initGLFW();
   void initGLAD();
@@ -80,7 +78,7 @@ private:
   glm::vec3 camera_up = glm::vec3(0.0f, 1.0f, 0.0f);
 
   // Camera movement properties
-  float camera_move_speed = 15.0f; // Adjusted for better movement
+  float camera_move_speed = 150.0f; // Adjusted for better movement
   float camera_zoom = 45.0f;
   float camera_pitch = 0.0f;
   float camera_yaw = -90.0f;

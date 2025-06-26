@@ -199,46 +199,60 @@ void Renderer::endFrame(float time_scale) {
   glBindVertexArray(0);
 }
 
-// Stub for now
 void Renderer::renderParticles(ParticleSystem &particles, int particle_count) {
   if (particle_count == 0) {
     return;
   }
 
-  // Create the PBO if it doesn't exist
-  if (pbo == 0) {
-    // Create a VBO (Vertex Buffer Object) and allocate memory
-    glGenBuffers(1, &pbo);
-    glBindBuffer(GL_ARRAY_BUFFER, pbo);
-    glBufferData(GL_ARRAY_BUFFER, particle_count * sizeof(float2), nullptr,
+  // Create the VBO if it doesn't exist
+  if (vbo == 0) {
+    glGenBuffers(1, &vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, vbo);
+    // Allocate space for interleaved positions (float4) and colors (float4)
+    glBufferData(GL_ARRAY_BUFFER, particle_count * 2 * sizeof(float4), nullptr,
                  GL_DYNAMIC_DRAW);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     // Register this VBO with CUDA
-    checkCudaError(cudaGraphicsGLRegisterBuffer(&cuda_pbo_resource, pbo,
+    checkCudaError(cudaGraphicsGLRegisterBuffer(&cuda_vbo_resource, vbo,
                                                 cudaGraphicsRegisterFlagsNone),
                    "cudaGraphicsGLRegisterBuffer failed");
   }
 
-  // Map the PBO for writing from CUDA
-  float2 *d_pbo_buffer = nullptr;
-  checkCudaError(cudaGraphicsMapResources(1, &cuda_pbo_resource, 0),
+  // Map the VBO for writing from CUDA
+  float4 *d_vbo_buffer = nullptr;
+  checkCudaError(cudaGraphicsMapResources(1, &cuda_vbo_resource, 0),
                  "cudaGraphicsMapResources failed");
   size_t num_bytes;
   checkCudaError(cudaGraphicsResourceGetMappedPointer(
-                     (void **)&d_pbo_buffer, &num_bytes, cuda_pbo_resource),
+                     (void **)&d_vbo_buffer, &num_bytes, cuda_vbo_resource),
                  "cudaGraphicsResourceGetMappedPointer failed");
 
-  // Launch the kernel to copy particle positions
-  launch_copy_positions_to_buffer(d_pbo_buffer, particles.getDeviceParticles(),
-                                  particle_count);
+  // Launch the kernel to compute colors and fill the buffer
+  // TODO: Make max_velocity_sq dynamic
+  float max_velocity_sq = 0.5f;
+  launch_compute_colors_and_interleave(d_vbo_buffer,
+                                       particles.getDeviceParticles(),
+                                       particle_count, max_velocity_sq);
 
-  // Unmap the PBO
-  checkCudaError(cudaGraphicsUnmapResources(1, &cuda_pbo_resource, 0),
+  // Unmap the VBO
+  checkCudaError(cudaGraphicsUnmapResources(1, &cuda_vbo_resource, 0),
                  "cudaGraphicsUnmapResources failed");
 
   // --- OpenGL Drawing ---
   glUseProgram(shader_program);
+  glBindVertexArray(vao);
+  glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+  // Vertex attribute for position (location = 0)
+  glEnableVertexAttribArray(0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 2 * sizeof(float4),
+                        (void *)0);
+
+  // Vertex attribute for color (location = 1)
+  glEnableVertexAttribArray(1);
+  glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, 2 * sizeof(float4),
+                        (void *)sizeof(float4));
 
   // Create transformations
   glm::mat4 projection = glm::perspective(
@@ -254,18 +268,13 @@ void Renderer::renderParticles(ParticleSystem &particles, int particle_count) {
   glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
   glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
 
-  glBindVertexArray(vao);
-
-  glBindBuffer(GL_ARRAY_BUFFER, pbo);
-  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void *)0);
-  glEnableVertexAttribArray(0);
-
-  glEnable(GL_PROGRAM_POINT_SIZE);
+  // Draw the particles
   glDrawArrays(GL_POINTS, 0, particle_count);
-  glDisable(GL_PROGRAM_POINT_SIZE);
 
-  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  // Clean up state
   glBindVertexArray(0);
+  glDisableVertexAttribArray(0);
+  glDisableVertexAttribArray(1);
 }
 
 void Renderer::setupCallbacks() {

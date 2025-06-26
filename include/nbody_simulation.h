@@ -1,11 +1,16 @@
 #pragma once
 
 #include "barnes_hut_force.h"
+#include "errors.h"
 #include "octree.h"
 #include "particle.h"
 #include <chrono>
 #include <cuda_runtime.h>
 #include <string>
+#include <vector>
+
+// Forward-declaration
+class NBodySimulation;
 
 /**
  * N-Body Simulation class - Upgraded with Barnes-Hut O(N log N)
@@ -58,7 +63,7 @@ private:
   int current_timestep;
 
   // Performance tracking
-  std::chrono::high_resolution_clock::time_point last_time;
+  std::chrono::steady_clock::time_point last_time;
   double total_simulation_time;
   double total_force_calc_time;
   double total_integration_time;
@@ -72,7 +77,7 @@ private:
 };
 
 // Constants
-const float G = 6.67430e-11f; // Gravitational constant (scaled for simulation)
+const float G = 6.67430e-9f; // Gravitational constant (scaled for simulation)
 
 // CUDA kernel declarations for force calculation and integration
 extern "C" {

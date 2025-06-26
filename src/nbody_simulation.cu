@@ -1,4 +1,3 @@
-#include "boundaries.h"
 #include "initial_conditions.h"
 #include "nbody_simulation.h"
 #include <iomanip>
@@ -155,10 +154,6 @@ void NBodySimulation::step() {
 
   launch_update_particles(particles->getDeviceParticles(),
                           particles->getNumParticles(), dt * time_scale);
-
-  // Enforce boundary conditions with a smaller boundary
-  launch_enforce_boundaries(particles->getDeviceParticles(),
-                            particles->getNumParticles(), 25.0f);
 
   checkCudaError(cudaEventRecord(stop_event), "step record stop");
   checkCudaError(cudaEventSynchronize(stop_event), "step sync stop");

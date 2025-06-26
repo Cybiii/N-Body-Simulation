@@ -7,6 +7,9 @@ project(NBodySimulation LANGUAGES CXX CUDA C)
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
+# Add definitions for libraries
+add_definitions(-DGLM_FORCE_CUDA)
+
 # Set CUDA architecture (RTX 3060 is Ampere - sm_86)
 set(CMAKE_CUDA_ARCHITECTURES 86)
 
@@ -52,7 +55,6 @@ add_executable(nbody_simulation
   src/renderer.cpp
   src/render_kernel.cu
   ${SIM_SOURCES}
-  src/boundaries.cu
 )
 
 # Manually link graphics libraries
@@ -80,7 +82,6 @@ add_custom_command(
 add_executable(benchmark
   src/benchmark.cu
   ${SIM_SOURCES}
-  src/boundaries.cu
 )
 target_link_libraries(benchmark PRIVATE ${CUDA_LIBRARIES})
 set_target_properties(benchmark PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

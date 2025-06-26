@@ -1,7 +1,9 @@
-#version 330 core
+#version 450 core
 out vec4 FragColor;
+
+in vec4 particleColor;
 
 void main()
 {
-    FragColor = vec4(0.8, 0.9, 1.0, 1.0); // A bright, slightly blueish white
+    FragColor = particleColor;
 } 

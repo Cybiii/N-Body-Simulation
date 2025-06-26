@@ -35,34 +35,43 @@ int main(int argc, char *argv[]) {
             << std::endl;
   std::cout << std::endl;
 
+  int num_particles = 8192; // Default value
+
+  // Parse command-line arguments
+  for (int i = 1; i < argc; ++i) {
+    std::string arg = argv[i];
+    if (arg == "--particles" && i + 1 < argc) {
+      try {
+        num_particles = std::stoi(argv[++i]);
+      } catch (const std::invalid_argument &ia) {
+        std::cerr << "Invalid number for --particles: " << argv[i] << std::endl;
+        return 1;
+      } catch (const std::out_of_range &oor) {
+        std::cerr << "Number for --particles is out of range: " << argv[i]
+                  << std::endl;
+        return 1;
+      }
+    }
+  }
+
   try {
-    const int num_particles = 8192;
     printf("\n--- Running Simple Sphere Demo with Visualization (N=%d) ---\n",
            num_particles);
 
     NBodySimulation simulation(num_particles, NBodySimulation::BARNES_HUT);
     InitialConditions::generateRandomSphere(*simulation.getParticleSystem(),
-                                            5.0f, 0.0f, {5.0f, 20.0f});
+                                            5.0f, 0.0f, {500.0f, 2000.0f});
 
     simulation.getParticleSystem()->copyToDevice();
 
     Renderer renderer(1280, 720, "N-Body Simulation");
 
     while (!renderer.shouldClose()) {
-      // Handle input and pass simulation object
       renderer.processInput(simulation);
-
-      // Begin the frame
       renderer.beginFrame();
-
-      // Update the simulation by one step
       simulation.step();
-
-      // Render the particles
       renderer.renderParticles(*simulation.getParticleSystem(),
                                simulation.getParticleCount());
-
-      // End the frame, passing time scale for UI
       renderer.endFrame(simulation.getTimeScale());
     }
   } catch (const std::exception &e) {

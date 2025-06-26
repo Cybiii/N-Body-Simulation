@@ -1,0 +1,127 @@
+# CUDA N-Body Simulation .gitignore
+plan.txt
+# Build outputs
+build/
+bin/
+*.exe
+*.exp
+*.lib
+*.pdb
+*.ilk
+
+# CUDA compilation artifacts
+*.ptx
+*.cubin
+*.fatbin
+
+# Visual Studio / MSBuild
+.vs/
+*.vcxproj.user
+*.vcxproj.filters
+*.sln.docstates
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# CMake
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+Makefile
+*.cmake
+!CMakeLists.txt
+
+# Temporary files
+*.tmp
+*.temp
+*~
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.code-workspace
+
+# Logs and data files
+*.log
+*.csv
+*.dat
+output/
+results/
+
+# Test executables and temporary files
+*_test.exe
+*_test
+test_*
+benchmark_*
+morton_simple_test*
+phase2_complete_test*
+
+# Backup files
+*.bak
+*.backup
+*.old
+
+# Documentation build
+docs/_build/
+*.pdf
+*.aux
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+
+# Performance profiling
+*.nvprof
+*.qdrep
+*.qdstrm
+
+# Windows specific
+*.lnk
+desktop.ini
+
+# Linux specific
+*.so
+*.a
+*.o
+
+# Python (if any scripts)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+
+# Jupyter notebooks (if any)
+.ipynb_checkpoints/
+
+# Large data files
+*.bin
+data/
+simulations/
+
+# Exclude specific large files but keep structure
+*.mp4
+*.avi
+*.mov
+*.gif
+
+# Keep important documentation and configuration
+!README.md
+!plan.txt
+!PHASE2_REPORT.md
+!CMakeLists.txt
+!build.bat
+!.gitignore

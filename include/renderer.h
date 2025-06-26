@@ -20,11 +20,12 @@
 #include <cuda_gl_interop.h>
 
 // --- Standard Library Headers ---
+#include <string> // For shader loading
 #include <vector>
+
 
 // --- Project Headers ---
 #include "nbody_simulation.h"
-#include "particle.h" // For ParticleSystem definition
 
 class Renderer {
 public:
@@ -41,12 +42,17 @@ private:
   int width;
   int height;
 
+  // OpenGL state
+  GLuint shader_program;
+  GLuint vao;
+
   // CUDA-OpenGL Interop
   GLuint pbo = 0; // OpenGL pixel buffer object
   cudaGraphicsResource_t cuda_pbo_resource = nullptr; // CUDA graphics resource
 
   void initGLFW();
   void initGLAD();
+  void initShaders();
   void setupCallbacks();
 
   // Basic camera properties

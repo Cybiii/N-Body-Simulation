@@ -1,10 +1,70 @@
 #include "renderer.h"
+#include "render_kernel.h"
+#include <fstream>
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
+#include <vector>
+
 
 // Callback for GLFW errors
 void glfw_error_callback(int error, const char *description) {
   std::cerr << "GLFW Error " << error << ": " << description << std::endl;
+}
+
+// Helper function to read shader source from a file
+std::string readShaderSource(const char *filePath) {
+  std::ifstream shaderFile(filePath);
+  if (!shaderFile) {
+    throw std::runtime_error(std::string("Failed to open shader file: ") +
+                             filePath);
+  }
+  std::stringstream buffer;
+  buffer << shaderFile.rdbuf();
+  return buffer.str();
+}
+
+// Helper function to compile a shader and check for errors
+GLuint compileShader(GLenum type, const char *source) {
+  GLuint shader = glCreateShader(type);
+  glShaderSource(shader, 1, &source, NULL);
+  glCompileShader(shader);
+
+  GLint success;
+  glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
+  if (!success) {
+    GLint logLength;
+    glGetShaderiv(shader, GL_INFO_LOG_LENGTH, &logLength);
+    std::vector<GLchar> log(logLength);
+    glGetShaderInfoLog(shader, logLength, NULL, log.data());
+    std::string errorMsg = "Shader compilation failed: ";
+    errorMsg += log.data();
+    glDeleteShader(shader);
+    throw std::runtime_error(errorMsg);
+  }
+  return shader;
+}
+
+// Helper function to link shaders into a program
+GLuint createShaderProgram(GLuint vertexShader, GLuint fragmentShader) {
+  GLuint program = glCreateProgram();
+  glAttachShader(program, vertexShader);
+  glAttachShader(program, fragmentShader);
+  glLinkProgram(program);
+
+  GLint success;
+  glGetProgramiv(program, GL_LINK_STATUS, &success);
+  if (!success) {
+    GLint logLength;
+    glGetProgramiv(program, GL_INFO_LOG_LENGTH, &logLength);
+    std::vector<GLchar> log(logLength);
+    glGetProgramInfoLog(program, logLength, NULL, log.data());
+    std::string errorMsg = "Shader program linking failed: ";
+    errorMsg += log.data();
+    glDeleteProgram(program);
+    throw std::runtime_error(errorMsg);
+  }
+  return program;
 }
 
 Renderer::Renderer(int width, int height, const char *title)
@@ -20,12 +80,16 @@ Renderer::Renderer(int width, int height, const char *title)
   glfwMakeContextCurrent(window);
 
   initGLAD();
+  initShaders();
 
   glViewport(0, 0, width, height);
   std::cout << "Renderer initialized." << std::endl;
 }
 
 Renderer::~Renderer() {
+  glDeleteProgram(shader_program);
+  glDeleteVertexArrays(1, &vao);
+
   if (window) {
     glfwDestroyWindow(window);
   }
@@ -49,6 +113,27 @@ void Renderer::initGLAD() {
   }
 }
 
+void Renderer::initShaders() {
+  // Read shader sources
+  std::string vertexSource = readShaderSource("shaders/particle.vert");
+  std::string fragmentSource = readShaderSource("shaders/particle.frag");
+
+  // Compile shaders
+  GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexSource.c_str());
+  GLuint fragmentShader =
+      compileShader(GL_FRAGMENT_SHADER, fragmentSource.c_str());
+
+  // Link shaders into a program
+  shader_program = createShaderProgram(vertexShader, fragmentShader);
+
+  // Shaders are linked into the program, no need to keep them around
+  glDeleteShader(vertexShader);
+  glDeleteShader(fragmentShader);
+
+  // Create a VAO (Vertex Array Object) to hold our vertex attribute state
+  glGenVertexArrays(1, &vao);
+}
+
 bool Renderer::shouldClose() const { return glfwWindowShouldClose(window); }
 
 void Renderer::beginFrame() {
@@ -63,5 +148,58 @@ void Renderer::endFrame() {
 
 // Stub for now
 void Renderer::renderParticles(ParticleSystem &particles, int particle_count) {
-  // Rendering logic will go here
+  if (particle_count == 0) {
+    return;
+  }
+
+  // Create the PBO if it doesn't exist
+  if (pbo == 0) {
+    // Create a VBO (Vertex Buffer Object) and allocate memory
+    glGenBuffers(1, &pbo);
+    glBindBuffer(GL_ARRAY_BUFFER, pbo);
+    glBufferData(GL_ARRAY_BUFFER, particle_count * sizeof(float2), nullptr,
+                 GL_DYNAMIC_DRAW);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    // Register this VBO with CUDA
+    checkCudaError(cudaGraphicsGLRegisterBuffer(&cuda_pbo_resource, pbo,
+                                                cudaGraphicsRegisterFlagsNone),
+                   "cudaGraphicsGLRegisterBuffer failed");
+  }
+
+  // Map the PBO for writing from CUDA
+  float2 *d_pbo_buffer = nullptr;
+  checkCudaError(cudaGraphicsMapResources(1, &cuda_pbo_resource, 0),
+                 "cudaGraphicsMapResources failed");
+  size_t num_bytes;
+  checkCudaError(cudaGraphicsResourceGetMappedPointer(
+                     (void **)&d_pbo_buffer, &num_bytes, cuda_pbo_resource),
+                 "cudaGraphicsResourceGetMappedPointer failed");
+
+  // Launch the kernel to copy particle positions
+  launch_copy_positions_to_buffer(d_pbo_buffer, particles.getDeviceParticles(),
+                                  particle_count);
+
+  // Unmap the PBO
+  checkCudaError(cudaGraphicsUnmapResources(1, &cuda_pbo_resource, 0),
+                 "cudaGraphicsUnmapResources failed");
+
+  // --- OpenGL Drawing ---
+  glUseProgram(shader_program);
+  glBindVertexArray(vao);
+
+  glBindBuffer(GL_ARRAY_BUFFER, pbo);
+  glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, (void *)0);
+  glEnableVertexAttribArray(0);
+
+  glEnable(GL_PROGRAM_POINT_SIZE);
+  glDrawArrays(GL_POINTS, 0, particle_count);
+  glDisable(GL_PROGRAM_POINT_SIZE);
+
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindVertexArray(0);
+}
+
+void Renderer::setupCallbacks() {
+  // We will add mouse/keyboard callbacks here later for camera control
 }

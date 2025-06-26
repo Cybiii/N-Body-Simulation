@@ -380,4 +380,12 @@ Code Comments: Well-commented, clean, and readable code.
 
 Project Log: Keep a brief log of your progress, challenges, and solutions.
 
+This is the final major step of Phase 4. We need to make the particles appear on the screen. This involves a few steps, but the core idea is to use a highly efficient technique called CUDA-OpenGL Interoperability. Instead of copying particle data from the GPU to the CPU and then back to the GPU for drawing, we will make CUDA write the particle positions directly into a special memory buffer that OpenGL can read from without any copies.
+Here's the plan:
+Create Shaders: We'll write a simple vertex and fragment shader for OpenGL. The vertex shader will position each particle, and the fragment shader will color it.
+Shader Loading: I'll add code to our Renderer class to load and compile these shaders.
+CUDA-OpenGL Buffer: I'll set up a special buffer (a Pixel Buffer Object, or PBO) that both CUDA and OpenGL can access.
+Create a CUDA Kernel: I'll write a new, small CUDA kernel whose only job is to write the particle positions into this shared buffer.
+Implement renderParticles: I'll fill in the final logic to orchestrate everything: tell CUDA to run the kernel, and then tell OpenGL to draw the points from the buffer.
+
 This project will challenge you, but successfully completing it will demonstrate a truly deep understanding of CUDA, parallel algorithms, hierarchical data structures, and performance optimization, making you stand out significantly in the fields you're targeting. Good luck!

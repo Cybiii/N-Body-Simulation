@@ -2,18 +2,6 @@
 #include <cmath>
 #include <iostream>
 
-
-/**
- * CUDA error checking utility
- */
-void checkCudaError(cudaError_t error, const char *operation) {
-  if (error != cudaSuccess) {
-    std::cerr << "CUDA error during " << operation << ": "
-              << cudaGetErrorString(error) << std::endl;
-    exit(1);
-  }
-}
-
 /**
  * CUDA kernel to reset accelerations
  */

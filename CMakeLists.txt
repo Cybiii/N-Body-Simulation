@@ -49,6 +49,7 @@ add_executable(nbody_simulation
   src/main.cu
   src/main_callbacks.cpp
   src/renderer.cpp
+  src/render_kernel.cu
   ${SIM_SOURCES}
 )
 
@@ -64,6 +65,14 @@ target_link_libraries(nbody_simulation PRIVATE
 
 set_target_properties(nbody_simulation PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set_property(TARGET nbody_simulation PROPERTY CUDA_SEPARABLE_COMPILATION ON)
+
+# --- Post-Build: Copy Shaders ---
+add_custom_command(
+    TARGET nbody_simulation POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+    ${CMAKE_SOURCE_DIR}/shaders ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders
+    COMMENT "Copying shaders to output directory"
+)
 
 # Benchmark executable
 add_executable(benchmark

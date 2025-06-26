@@ -1,7 +1,9 @@
 #pragma once
 
+#include "errors.h"
 #include <cuda_runtime.h>
 #include <vector>
+#include <vector_types.h>
 
 /**
  * Particle structure representing a single body in the N-body simulation

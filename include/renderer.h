@@ -50,6 +50,8 @@ public:
                               double yoffset);
 
 private:
+  void processInput(); // Handles keyboard input
+
   GLFWwindow *window;
   int width;
   int height;
@@ -67,11 +69,19 @@ private:
   void initShaders();
   void setupCallbacks();
 
+  // Timing and FPS
+  double delta_time = 0.0;
+  double last_frame_time = 0.0;
+  int frame_count = 0;
+  double last_fps_update_time = 0.0;
+
   // Basic camera properties
   glm::vec3 camera_pos = glm::vec3(0.0f, 0.0f, 3.0f);
   glm::vec3 camera_front = glm::vec3(0.0f, 0.0f, -1.0f);
   glm::vec3 camera_up = glm::vec3(0.0f, 1.0f, 0.0f);
 
+  // Camera movement properties
+  float camera_move_speed = 5.0f; // Adjusted for better movement
   float camera_zoom = 45.0f;
   float camera_pitch = 0.0f;
   float camera_yaw = -90.0f;

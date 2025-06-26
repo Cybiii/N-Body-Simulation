@@ -74,23 +74,45 @@ GLuint createShaderProgram(GLuint vertexShader, GLuint fragmentShader) {
 
 Renderer::Renderer(int width, int height, const char *title)
     : width(width), height(height), window(nullptr) {
-  initGLFW();
 
-  // Create window
+  std::cout << "Attempting to initialize renderer..." << std::endl;
+
+  std::cout << "Initializing GLFW..." << std::endl;
+  initGLFW();
+  std::cout << "GLFW Initialized." << std::endl;
+
+  std::cout << "Creating GLFW window..." << std::endl;
   window = glfwCreateWindow(width, height, title, NULL, NULL);
   if (!window) {
     glfwTerminate();
     throw std::runtime_error("Failed to create GLFW window");
   }
   glfwMakeContextCurrent(window);
-  glfwSetWindowUserPointer(window, this); // Store 'this' pointer
+  std::cout << "GLFW window created." << std::endl;
 
+  glfwSetWindowUserPointer(
+      window, this); // Associate this Renderer instance with the window
+
+  std::cout << "Initializing GLAD..." << std::endl;
   initGLAD();
-  initShaders();
-  setupCallbacks(); // Call the new callback setup function
+  std::cout << "GLAD Initialized." << std::endl;
 
+  std::cout << "Initializing Shaders..." << std::endl;
+  initShaders();
+  std::cout << "Shaders Initialized." << std::endl;
+
+  std::cout << "Setting up callbacks..." << std::endl;
+  setupCallbacks(); // This includes mouse and scroll callbacks
+  std::cout << "Callbacks set up." << std::endl;
+
+  // Initialize timing
+  last_frame_time = glfwGetTime();
+  last_fps_update_time = last_frame_time;
+
+  // Set the initial viewport size
   glViewport(0, 0, width, height);
-  std::cout << "Renderer initialized." << std::endl;
+
+  std::cout << "Renderer initialized successfully." << std::endl;
 }
 
 Renderer::~Renderer() {
@@ -144,11 +166,31 @@ void Renderer::initShaders() {
 bool Renderer::shouldClose() const { return glfwWindowShouldClose(window); }
 
 void Renderer::beginFrame() {
-  glClearColor(0.0f, 0.0f, 0.05f, 1.0f);
+  // Calculate delta time
+  double current_time = glfwGetTime();
+  delta_time = current_time - last_frame_time;
+  last_frame_time = current_time;
+
+  // Handle user input
+  processInput();
+
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
 void Renderer::endFrame() {
+  // FPS calculation
+  frame_count++;
+  double current_time = glfwGetTime();
+  if (current_time - last_fps_update_time >= 1.0) { // Update every second
+    char title_buffer[256];
+    sprintf(title_buffer, "N-Body Simulation | %d Particles | FPS: %d", 8192,
+            frame_count);
+    glfwSetWindowTitle(window, title_buffer);
+    frame_count = 0;
+    last_fps_update_time = current_time;
+  }
+
+  // Swap buffers and poll events
   glfwSwapBuffers(window);
   glfwPollEvents();
 }
@@ -226,6 +268,33 @@ void Renderer::setupCallbacks() {
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
   glfwSetCursorPosCallback(window, mouse_callback);
   glfwSetScrollCallback(window, scroll_callback);
+}
+
+void Renderer::processInput() {
+  if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+    glfwSetWindowShouldClose(window, true);
+
+  float current_move_speed = camera_move_speed * (float)delta_time;
+
+  // Forward/backward
+  if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+    camera_pos += camera_front * current_move_speed;
+  if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+    camera_pos -= camera_front * current_move_speed;
+
+  // Left/right (strafe)
+  if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+    camera_pos -= glm::normalize(glm::cross(camera_front, camera_up)) *
+                  current_move_speed;
+  if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+    camera_pos += glm::normalize(glm::cross(camera_front, camera_up)) *
+                  current_move_speed;
+
+  // Up/down
+  if (glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+    camera_pos += camera_up * current_move_speed;
+  if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+    camera_pos -= camera_up * current_move_speed;
 }
 
 // --- GLFW Callbacks ---

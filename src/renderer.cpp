@@ -6,11 +6,16 @@
 #include <stdexcept>
 #include <vector>
 
-
 // Callback for GLFW errors
 void glfw_error_callback(int error, const char *description) {
   std::cerr << "GLFW Error " << error << ": " << description << std::endl;
 }
+
+// Forward declaration of callback functions
+// These are now C-style free functions, not class methods.
+void framebuffer_size_callback(GLFWwindow *window, int width, int height);
+void mouse_callback(GLFWwindow *window, double xpos, double ypos);
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset);
 
 // Helper function to read shader source from a file
 std::string readShaderSource(const char *filePath) {
@@ -78,9 +83,11 @@ Renderer::Renderer(int width, int height, const char *title)
     throw std::runtime_error("Failed to create GLFW window");
   }
   glfwMakeContextCurrent(window);
+  glfwSetWindowUserPointer(window, this); // Store 'this' pointer
 
   initGLAD();
   initShaders();
+  setupCallbacks(); // Call the new callback setup function
 
   glViewport(0, 0, width, height);
   std::cout << "Renderer initialized." << std::endl;
@@ -186,6 +193,21 @@ void Renderer::renderParticles(ParticleSystem &particles, int particle_count) {
 
   // --- OpenGL Drawing ---
   glUseProgram(shader_program);
+
+  // Create transformations
+  glm::mat4 projection = glm::perspective(
+      glm::radians(camera_zoom), (float)width / (float)height, 0.1f, 1000.0f);
+  glm::mat4 view =
+      glm::lookAt(camera_pos, camera_pos + camera_front, camera_up);
+
+  // Get matrix uniform locations
+  GLint projLoc = glGetUniformLocation(shader_program, "projection");
+  GLint viewLoc = glGetUniformLocation(shader_program, "view");
+
+  // Pass them to the shaders
+  glUniformMatrix4fv(projLoc, 1, GL_FALSE, glm::value_ptr(projection));
+  glUniformMatrix4fv(viewLoc, 1, GL_FALSE, glm::value_ptr(view));
+
   glBindVertexArray(vao);
 
   glBindBuffer(GL_ARRAY_BUFFER, pbo);
@@ -201,5 +223,60 @@ void Renderer::renderParticles(ParticleSystem &particles, int particle_count) {
 }
 
 void Renderer::setupCallbacks() {
-  // We will add mouse/keyboard callbacks here later for camera control
+  glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
+  glfwSetCursorPosCallback(window, mouse_callback);
+  glfwSetScrollCallback(window, scroll_callback);
+}
+
+// --- GLFW Callbacks ---
+
+void framebuffer_size_callback(GLFWwindow *window, int width, int height) {
+  glViewport(0, 0, width, height);
+}
+
+void mouse_callback(GLFWwindow *window, double xpos, double ypos) {
+  Renderer *renderer =
+      static_cast<Renderer *>(glfwGetWindowUserPointer(window));
+  if (renderer->first_mouse) {
+    renderer->last_mouse_x = xpos;
+    renderer->last_mouse_y = ypos;
+    renderer->first_mouse = false;
+  }
+
+  double xoffset = xpos - renderer->last_mouse_x;
+  double yoffset = renderer->last_mouse_y -
+                   ypos; // reversed since y-coordinates go from bottom to top
+  renderer->last_mouse_x = xpos;
+  renderer->last_mouse_y = ypos;
+
+  float sensitivity = 0.1f;
+  xoffset *= sensitivity;
+  yoffset *= sensitivity;
+
+  renderer->camera_yaw += xoffset;
+  renderer->camera_pitch += yoffset;
+
+  // Make sure that when pitch is out of bounds, screen doesn't get flipped
+  if (renderer->camera_pitch > 89.0f)
+    renderer->camera_pitch = 89.0f;
+  if (renderer->camera_pitch < -89.0f)
+    renderer->camera_pitch = -89.0f;
+
+  glm::vec3 front;
+  front.x = cos(glm::radians(renderer->camera_yaw)) *
+            cos(glm::radians(renderer->camera_pitch));
+  front.y = sin(glm::radians(renderer->camera_pitch));
+  front.z = sin(glm::radians(renderer->camera_yaw)) *
+            cos(glm::radians(renderer->camera_pitch));
+  renderer->camera_front = glm::normalize(front);
+}
+
+void scroll_callback(GLFWwindow *window, double xoffset, double yoffset) {
+  Renderer *renderer =
+      static_cast<Renderer *>(glfwGetWindowUserPointer(window));
+  renderer->camera_zoom -= (float)yoffset;
+  if (renderer->camera_zoom < 1.0f)
+    renderer->camera_zoom = 1.0f;
+  if (renderer->camera_zoom > 90.0f)
+    renderer->camera_zoom = 90.0f;
 }

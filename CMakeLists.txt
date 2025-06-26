@@ -20,6 +20,7 @@ set(CMAKE_CUDA_FLAGS_RELEASE "-O3 -DNDEBUG")
 include_directories(
     include
     deps/glad/include
+    deps/glm
 )
 
 # Source files for the simulation library components

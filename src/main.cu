@@ -148,5 +148,8 @@ int main(int argc, char *argv[]) {
   std::cout << "    Simulation Complete" << std::endl;
   std::cout << "===============================================" << std::endl;
 
+  std::cout << "\nPress any key to continue..." << std::endl;
+  std::cin.get();
+
   return 0;
 }

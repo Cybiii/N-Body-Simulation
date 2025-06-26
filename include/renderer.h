@@ -19,13 +19,20 @@
 // Now we can safely include the CUDA-OpenGL interop header.
 #include <cuda_gl_interop.h>
 
+// --- Math Library ---
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 // --- Standard Library Headers ---
 #include <string> // For shader loading
 #include <vector>
 
-
 // --- Project Headers ---
 #include "nbody_simulation.h"
+
+// Forward declare GLFW window struct
+struct GLFWwindow;
 
 class Renderer {
 public:
@@ -36,6 +43,11 @@ public:
   void beginFrame();
   void endFrame();
   void renderParticles(ParticleSystem &particles, int particle_count);
+
+  // Friend declarations for GLFW callbacks
+  friend void mouse_callback(GLFWwindow *window, double xpos, double ypos);
+  friend void scroll_callback(GLFWwindow *window, double xoffset,
+                              double yoffset);
 
 private:
   GLFWwindow *window;
@@ -56,9 +68,13 @@ private:
   void setupCallbacks();
 
   // Basic camera properties
-  float camera_zoom = 1.0f;
+  glm::vec3 camera_pos = glm::vec3(0.0f, 0.0f, 3.0f);
+  glm::vec3 camera_front = glm::vec3(0.0f, 0.0f, -1.0f);
+  glm::vec3 camera_up = glm::vec3(0.0f, 1.0f, 0.0f);
+
+  float camera_zoom = 45.0f;
   float camera_pitch = 0.0f;
-  float camera_yaw = 0.0f;
+  float camera_yaw = -90.0f;
   double last_mouse_x = 0.0, last_mouse_y = 0.0;
   bool first_mouse = true;
 };

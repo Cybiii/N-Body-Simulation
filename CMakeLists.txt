@@ -3,11 +3,7 @@ cmake_minimum_required(VERSION 3.18)
 # Project name and description
 project(NBodySimulation LANGUAGES CXX CUDA)
 
-# Set C++ standard
-set(CMAKE_CXX_STANDARD 17)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-# CUDA requirements
+# Set C++ standard for CUDA files
 set(CMAKE_CUDA_STANDARD 17)
 set(CMAKE_CUDA_STANDARD_REQUIRED ON)
 
@@ -40,7 +36,17 @@ set_target_properties(nbody_simulation PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMA
 set_property(TARGET nbody_simulation PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
 # Benchmark executable
-add_executable(benchmark src/benchmark.cu ${SIM_SOURCES})
+add_executable(benchmark
+  src/benchmark.cu
+  src/particle.cu
+  src/nbody_simulation.cu
+  src/initial_conditions.cu
+  src/morton_code.cu
+  src/octree.cu
+  src/barnes_hut_force.cu
+  src/particle_utils.cu
+)
+target_link_libraries(benchmark PRIVATE ${CUDA_LIBRARIES})
 set_target_properties(benchmark PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set_property(TARGET benchmark PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 
@@ -49,11 +55,14 @@ file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 # Add compiler-specific options for our known working setup
 if(WIN32)
+    set(MSVC_CCBIN "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64")
     # Use the specific compiler path that we know works
     target_compile_options(nbody_simulation PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
-        -ccbin "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64"
+        -ccbin ${MSVC_CCBIN}
     >)
     target_compile_options(benchmark PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:
-        -ccbin "C:/Program Files (x86)/Microsoft Visual Studio/2022/BuildTools/VC/Tools/MSVC/14.44.35207/bin/Hostx64/x64"
+        -ccbin ${MSVC_CCBIN}
     >)
-endif() 
+endif()
+
+target_link_libraries(nbody_simulation PRIVATE ${CUDA_LIBRARIES}) 

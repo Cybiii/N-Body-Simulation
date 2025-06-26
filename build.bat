@@ -1,35 +1,28 @@
 @echo off
 echo ===============================================
-echo    Building N-Body Simulation - Phase 1
+echo    Building N-Body Simulation
 echo ===============================================
 
-REM Create build directory
-if not exist "build" mkdir build
-cd build
+set BUILD_DIR=build
+set CMAKE_GENERATOR="Visual Studio 17 2022"
 
-REM Configure with CMake
 echo Configuring with CMake...
-cmake .. -G "Visual Studio 17 2022" -A x64
+cmake -S . -B %BUILD_DIR% -G %CMAKE_GENERATOR% -A x64
 
-REM Build the project
 echo Building project...
-cmake --build . --config Release
+cmake --build %BUILD_DIR% --config Release
 
-REM Check if build was successful
-if exist "bin\Release\nbody.exe" (
-    echo.
-    echo ===============================================
-    echo Build completed successfully!
-    echo Executables:
-    echo   - bin\Release\nbody.exe
-    echo   - bin\Release\benchmark.exe
-    echo ===============================================
-) else (
+if %ERRORLEVEL% NEQ 0 (
     echo.
     echo ===============================================
     echo Build failed! Check errors above.
     echo ===============================================
+) else (
+    echo.
+    echo ===============================================
+    echo Build successful! Executable is in %BUILD_DIR%/bin/Release
+    echo ===============================================
 )
 
-cd ..
+echo.
 pause 

@@ -72,5 +72,5 @@ void launch_barnes_hut_force_calculation(
     const OctreeNode *nodes, int num_nodes, const int *particle_indices,
     float theta_sq, float softening_sq, float G_constant);
 
-void launch_reset_accelerations(float3 *accelerations, int N);
+void launch_reset_accelerations_bh(float3 *accelerations, int N);
 }

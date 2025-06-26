@@ -112,10 +112,10 @@ public:
   void updateNodeProperties(class ParticleSystem &particles);
 
   // Accessors
-  OctreeNode *getDeviceNodes() { return d_nodes; }
+  OctreeNode *getDeviceNodes() const { return d_nodes; }
   OctreeNode *getHostNodes() { return h_nodes.data(); }
-  MortonCode::Code *getDeviceMortonCodes() { return d_morton_codes; }
-  int *getDeviceParticleIndices() { return d_particle_indices; }
+  MortonCode::Code *getDeviceMortonCodes() const { return d_morton_codes; }
+  int *getDeviceParticleIndices() const { return d_particle_indices; }
   int getNumNodes() const { return num_nodes; }
   int getNumParticles() const { return num_particles; }
   float3 getBoundingBoxMin() const { return global_bbox_min; }

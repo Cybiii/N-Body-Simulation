@@ -2,6 +2,31 @@
 #include "particle.h"
 #include <iostream>
 
+// Helper for atomic float min/max operations
+__device__ __forceinline__ void atomicMinFloat(float *address, float val) {
+  unsigned int *address_as_uint = (unsigned int *)address;
+  unsigned int old = *address_as_uint, assumed;
+  do {
+    assumed = old;
+    if (val >= __uint_as_float(assumed)) {
+      break;
+    }
+    old = atomicCAS(address_as_uint, assumed, __float_as_uint(val));
+  } while (assumed != old);
+}
+
+__device__ __forceinline__ void atomicMaxFloat(float *address, float val) {
+  unsigned int *address_as_uint = (unsigned int *)address;
+  unsigned int old = *address_as_uint, assumed;
+  do {
+    assumed = old;
+    if (val <= __uint_as_float(assumed)) {
+      break;
+    }
+    old = atomicCAS(address_as_uint, assumed, __float_as_uint(val));
+  } while (assumed != old);
+}
+
 /**
  * Morton code implementation for 3D Z-order curve
  * This is critical for efficient parallel octree construction
@@ -125,34 +150,13 @@ __global__ void compute_bounding_box_kernel(const float3 *positions, int N,
 
   // Write block results to global memory
   if (tid == 0) {
-    atomicMinFloat(&bbox_min->x, s_min[0].x);
-    atomicMinFloat(&bbox_min->y, s_min[0].y);
-    atomicMinFloat(&bbox_min->z, s_min[0].z);
-    atomicMaxFloat(&bbox_max->x, s_max[0].x);
-    atomicMaxFloat(&bbox_max->y, s_max[0].y);
-    atomicMaxFloat(&bbox_max->z, s_max[0].z);
+    atomicMinFloat(&(bbox_min->x), s_min[0].x);
+    atomicMinFloat(&(bbox_min->y), s_min[0].y);
+    atomicMinFloat(&(bbox_min->z), s_min[0].z);
+    atomicMaxFloat(&(bbox_max->x), s_max[0].x);
+    atomicMaxFloat(&(bbox_max->y), s_max[0].y);
+    atomicMaxFloat(&(bbox_max->z), s_max[0].z);
   }
-}
-
-// Atomic min/max for floats (if not available)
-__device__ void atomicMinFloat(float *address, float val) {
-  int *address_as_i = (int *)address;
-  int old = *address_as_i, assumed;
-  do {
-    assumed = old;
-    old = atomicCAS(address_as_i, assumed,
-                    __float_as_int(fminf(val, __int_as_float(assumed))));
-  } while (assumed != old);
-}
-
-__device__ void atomicMaxFloat(float *address, float val) {
-  int *address_as_i = (int *)address;
-  int old = *address_as_i, assumed;
-  do {
-    assumed = old;
-    old = atomicCAS(address_as_i, assumed,
-                    __float_as_int(fmaxf(val, __int_as_float(assumed))));
-  } while (assumed != old);
 }
 
 // Kernel to generate Morton codes for all particles

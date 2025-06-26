@@ -32,6 +32,10 @@ public:
   float getDt() const { return dt; }
   float getSoftening() const { return softening; }
   Algorithm getAlgorithm() const { return algorithm; }
+  double getTotalForceCalcTime() const { return total_force_calc_time; }
+  double getTotalIntegrationTime() const { return total_integration_time; }
+  double getTotalSimTime() const { return total_simulation_time; }
+  int getCurrentTimestep() const { return current_timestep; }
 
   // Setters
   void setDt(float new_dt) { dt = new_dt; }

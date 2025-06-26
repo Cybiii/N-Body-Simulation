@@ -82,9 +82,6 @@ void Octree::buildFromParticles(ParticleSystem &particles) {
     return;
   }
 
-  std::cout << "Building octree for " << num_particles << " particles..."
-            << std::endl;
-
   // Step 1: Compute global bounding box
   computeBoundingBox(particles);
 
@@ -99,38 +96,15 @@ void Octree::buildFromParticles(ParticleSystem &particles) {
 
   // Step 5: Compute centers of mass for all nodes
   computeCentersOfMass(particles);
-
-  std::cout << "Octree construction completed!" << std::endl;
-  std::cout << "  Nodes created: " << num_nodes << std::endl;
-  std::cout << "  Tree depth: " << max_depth << std::endl;
 }
 
 void Octree::computeBoundingBox(ParticleSystem &particles) {
-  std::cout << "  Computing global bounding box..." << std::endl;
-
   // Get particle positions
   Particle *device_particles = particles.getDeviceParticles();
-
-  // Extract positions into separate array for efficiency
   float3 *d_positions;
   checkCudaError(cudaMalloc(&d_positions, num_particles * sizeof(float3)),
                  "position array allocation");
-
-  // Kernel to extract positions
-  int threadsPerBlock = 256;
-  int blocksPerGrid = (num_particles + threadsPerBlock - 1) / threadsPerBlock;
-
-  // Simple kernel to extract positions
-  auto extract_positions = [=] __global__(const Particle *particles,
-                                          float3 *positions, int N) {
-    int idx = blockIdx.x * blockDim.x + threadIdx.x;
-    if (idx < N) {
-      positions[idx] = particles[idx].position;
-    }
-  };
-
-  // Launch position extraction (we'll implement this properly)
-  // For now, let's use a simpler approach
+  launch_extract_positions(device_particles, d_positions, num_particles);
 
   // Allocate device memory for bounding box
   float3 *d_bbox_min;
@@ -139,6 +113,16 @@ void Octree::computeBoundingBox(ParticleSystem &particles) {
                  "bbox min allocation");
   checkCudaError(cudaMalloc(&d_bbox_max, sizeof(float3)),
                  "bbox max allocation");
+
+  // Initialize with opposite infinities
+  float3 h_bbox_min_init = make_float3(FLT_MAX, FLT_MAX, FLT_MAX);
+  float3 h_bbox_max_init = make_float3(-FLT_MAX, -FLT_MAX, -FLT_MAX);
+  checkCudaError(cudaMemcpy(d_bbox_min, &h_bbox_min_init, sizeof(float3),
+                            cudaMemcpyHostToDevice),
+                 "init bbox_min");
+  checkCudaError(cudaMemcpy(d_bbox_max, &h_bbox_max_init, sizeof(float3),
+                            cudaMemcpyHostToDevice),
+                 "init bbox_max");
 
   // Launch bounding box computation
   launch_compute_bounding_box(d_positions, num_particles, d_bbox_min,
@@ -154,17 +138,12 @@ void Octree::computeBoundingBox(ParticleSystem &particles) {
 
   // Expand bounding box slightly to avoid edge cases
   float3 expansion = make_float3(0.01f, 0.01f, 0.01f);
-  global_bbox_min = make_float3(global_bbox_min.x - expansion.x,
-                                global_bbox_min.y - expansion.y,
-                                global_bbox_min.z - expansion.z);
-  global_bbox_max = make_float3(global_bbox_max.x + expansion.x,
-                                global_bbox_max.y + expansion.y,
-                                global_bbox_max.z + expansion.z);
-
-  std::cout << "    Bounding box: (" << global_bbox_min.x << ", "
-            << global_bbox_min.y << ", " << global_bbox_min.z << ") to ("
-            << global_bbox_max.x << ", " << global_bbox_max.y << ", "
-            << global_bbox_max.z << ")" << std::endl;
+  global_bbox_min.x -= expansion.x;
+  global_bbox_min.y -= expansion.y;
+  global_bbox_min.z -= expansion.z;
+  global_bbox_max.x += expansion.x;
+  global_bbox_max.y += expansion.y;
+  global_bbox_max.z += expansion.z;
 
   // Clean up
   cudaFree(d_positions);
@@ -173,34 +152,20 @@ void Octree::computeBoundingBox(ParticleSystem &particles) {
 }
 
 void Octree::generateMortonCodes(ParticleSystem &particles) {
-  std::cout << "  Generating Morton codes..." << std::endl;
-
-  // Get particle positions (we need to extract them again)
   Particle *device_particles = particles.getDeviceParticles();
-
-  // For now, we'll assume we can access positions directly
-  // In a full implementation, we'd extract positions first
   float3 *d_positions;
   checkCudaError(cudaMalloc(&d_positions, num_particles * sizeof(float3)),
                  "position array allocation for Morton codes");
-
-  // Extract positions kernel (simplified)
-  int threadsPerBlock = 256;
-  int blocksPerGrid = (num_particles + threadsPerBlock - 1) / threadsPerBlock;
+  launch_extract_positions(device_particles, d_positions, num_particles);
 
   // Launch Morton code generation
   launch_generate_morton_codes(d_positions, num_particles, global_bbox_min,
                                global_bbox_max, d_morton_codes);
 
   cudaFree(d_positions);
-
-  std::cout << "    Morton codes generated for " << num_particles
-            << " particles" << std::endl;
 }
 
 void Octree::sortParticlesByMorton() {
-  std::cout << "  Sorting particles by Morton code..." << std::endl;
-
   // Initialize particle indices (0, 1, 2, ..., N-1)
   thrust::device_ptr<int> indices_ptr(d_particle_indices);
   thrust::sequence(indices_ptr, indices_ptr + num_particles);
@@ -210,8 +175,6 @@ void Octree::sortParticlesByMorton() {
 
   try {
     thrust::sort_by_key(morton_ptr, morton_ptr + num_particles, indices_ptr);
-
-    std::cout << "    Particles sorted by Morton code" << std::endl;
   } catch (const thrust::system_error &e) {
     std::cerr << "Thrust error during sorting: " << e.what() << std::endl;
     throw;
@@ -219,18 +182,10 @@ void Octree::sortParticlesByMorton() {
 }
 
 void Octree::buildTreeStructure() {
-  std::cout << "  Building tree structure..." << std::endl;
-
-  // This is the most complex part - building the actual tree from sorted Morton
-  // codes For a full implementation, this would involve:
-  // 1. Finding ranges of particles that belong to the same octree node
-  // 2. Creating internal nodes based on common prefixes of Morton codes
-  // 3. Setting up parent-child relationships
-
-  // For now, we'll create a simplified version
   int *d_num_nodes;
   checkCudaError(cudaMalloc(&d_num_nodes, sizeof(int)),
                  "node counter allocation");
+  checkCudaError(cudaMemset(d_num_nodes, 0, sizeof(int)), "node counter reset");
 
   launch_build_tree_structure(d_morton_codes, num_particles, d_nodes,
                               d_num_nodes);
@@ -241,38 +196,26 @@ void Octree::buildTreeStructure() {
       "copy node count to host");
 
   cudaFree(d_num_nodes);
-
-  std::cout << "    Tree structure built with " << num_nodes << " nodes"
-            << std::endl;
 }
 
 void Octree::computeCentersOfMass(ParticleSystem &particles) {
-  std::cout << "  Computing centers of mass..." << std::endl;
-
-  if (num_nodes == 0) {
-    std::cout << "    No nodes to compute centers of mass for" << std::endl;
-    return;
-  }
-
-  // Extract positions and masses
   Particle *device_particles = particles.getDeviceParticles();
 
   float3 *d_positions;
   float *d_masses;
   checkCudaError(cudaMalloc(&d_positions, num_particles * sizeof(float3)),
-                 "positions for CoM");
+                 "CoM position allocation");
   checkCudaError(cudaMalloc(&d_masses, num_particles * sizeof(float)),
-                 "masses for CoM");
+                 "CoM mass allocation");
 
-  // Launch center of mass computation
+  launch_extract_positions(device_particles, d_positions, num_particles);
+  launch_extract_masses(device_particles, d_masses, num_particles);
+
   launch_compute_centers_of_mass(d_positions, d_masses, d_particle_indices,
                                  num_particles, d_nodes, num_nodes);
 
   cudaFree(d_positions);
   cudaFree(d_masses);
-
-  std::cout << "    Centers of mass computed for " << num_nodes << " nodes"
-            << std::endl;
 }
 
 void Octree::updateNodeProperties(ParticleSystem &particles) {

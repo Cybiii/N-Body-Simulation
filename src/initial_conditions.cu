@@ -1,7 +1,14 @@
-#include "initial_conditions.h"
+#define _USE_MATH_DEFINES
 #include <cmath>
-#include <iostream>
 
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
+
+#include "initial_conditions.h"
+#include <iostream>
+#include <random>
+#include <vector>
 
 // Static member initialization
 std::mt19937 InitialConditions::rng(42); // Fixed seed for reproducibility
@@ -128,8 +135,6 @@ void InitialConditions::generateGalaxyDisk(ParticleSystem &particles,
   std::uniform_real_distribution<float> z_dist(-disk_thickness / 2.0f,
                                                disk_thickness / 2.0f);
   std::uniform_real_distribution<float> mass_dist(0.1f, 1.0f);
-
-  const float G = 6.67430e-11f; // Gravitational constant
 
   for (int i = 1; i < N; i++) {
     // Random position in disk

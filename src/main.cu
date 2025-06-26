@@ -3,7 +3,6 @@
 #include <iostream>
 #include <vector>
 
-
 void runSimpleDemo() {
   std::cout << "\n=== Simple N-Body Demo ===" << std::endl;
 
@@ -11,7 +10,7 @@ void runSimpleDemo() {
   const int timesteps = 100;
 
   // Create simulation
-  NBodySimulation sim(N, 0.01f, 0.1f);
+  NBodySimulation sim(N, NBodySimulation::BARNES_HUT, 0.01f, 0.1f);
 
   // Generate initial conditions
   InitialConditions::generateRandomSphere(*sim.getParticleSystem(), 5.0f, 1.0f);
@@ -37,7 +36,7 @@ void runGalaxyDemo() {
   const int timesteps = 200;
 
   // Create simulation with smaller timestep for stability
-  NBodySimulation sim(N, 0.005f, 0.05f);
+  NBodySimulation sim(N, NBodySimulation::BARNES_HUT, 0.005f, 0.05f);
 
   // Generate galaxy disk
   InitialConditions::generateGalaxyDisk(*sim.getParticleSystem(), 8.0f, 0.5f,
@@ -64,7 +63,7 @@ void runCollidingClustersDemo() {
   const int timesteps = 300;
 
   // Create simulation
-  NBodySimulation sim(N, 0.008f, 0.08f);
+  NBodySimulation sim(N, NBodySimulation::BARNES_HUT, 0.008f, 0.08f);
 
   // Generate colliding clusters
   InitialConditions::generateCollidingClusters(*sim.getParticleSystem(), 15.0f,
@@ -92,7 +91,8 @@ void runBenchmark() {
   const int timesteps_per_test = 10;
 
   // Create a simulation instance for benchmarking
-  NBodySimulation benchmark_sim(particle_counts[0], 0.01f, 0.1f);
+  NBodySimulation benchmark_sim(particle_counts[0], NBodySimulation::BARNES_HUT,
+                                0.01f, 0.1f);
 
   // Run benchmark
   benchmark_sim.benchmark(particle_counts, timesteps_per_test);
@@ -122,8 +122,8 @@ void printUsage(const char *program_name) {
 
 int main(int argc, char *argv[]) {
   std::cout << "===============================================" << std::endl;
-  std::cout << "    GPU N-Body Simulation - Phase 1" << std::endl;
-  std::cout << "    Brute-Force O(N²) Implementation" << std::endl;
+  std::cout << "    GPU N-Body Simulation - Phase 3 Complete" << std::endl;
+  std::cout << "    Barnes-Hut O(N log N) Implementation" << std::endl;
   std::cout << "===============================================" << std::endl;
 
   // Check CUDA device
@@ -176,8 +176,8 @@ int main(int argc, char *argv[]) {
   }
 
   std::cout << "\n===============================================" << std::endl;
-  std::cout << "Phase 1 completed successfully!" << std::endl;
-  std::cout << "Ready to proceed to Phase 2: Barnes-Hut Tree" << std::endl;
+  std::cout << "    Project Development Complete!" << std::endl;
+  std::cout << "    All phases (1, 2, and 3) are implemented." << std::endl;
   std::cout << "===============================================" << std::endl;
 
   return 0;

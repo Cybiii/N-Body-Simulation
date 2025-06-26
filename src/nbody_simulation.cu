@@ -65,23 +65,17 @@ __global__ void update_particles_kernel(Particle *particles, int N, float dt) {
 
   Particle &p = particles[idx];
 
-  // Leapfrog integration:
-  // v(t + dt/2) = v(t) + a(t) * dt/2
-  // r(t + dt) = r(t) + v(t + dt/2) * dt
-  // v(t + dt) = v(t + dt/2) + a(t + dt) * dt/2
+  // Symplectic Euler integration method:
+  // First, update velocity using current acceleration.
+  // Then, update position using the *new* velocity.
+  // This is more stable than standard Euler.
 
-  // For simplicity, we'll use Velocity Verlet:
-  // v(t + dt) = v(t) + a(t) * dt
-  // r(t + dt) = r(t) + v(t) * dt + 0.5 * a(t) * dt²
-
-  float dt_half = dt * 0.5f;
-
-  // Update velocity: v = v + a * dt
+  // Update velocity: v(t+dt) = v(t) + a(t) * dt
   p.velocity.x += p.acceleration.x * dt;
   p.velocity.y += p.acceleration.y * dt;
   p.velocity.z += p.acceleration.z * dt;
 
-  // Update position: r = r + v * dt
+  // Update position: r(t+dt) = r(t) + v(t+dt) * dt
   p.position.x += p.velocity.x * dt;
   p.position.y += p.velocity.y * dt;
   p.position.z += p.velocity.z * dt;
@@ -125,8 +119,8 @@ NBodySimulation::NBodySimulation(int num_particles, Algorithm algo, float dt,
   barnes_hut_force = new BarnesHutForce(theta, softening);
 
   // Create CUDA events for timing
-  checkCudaError(cudaEventCreate(&start_event));
-  checkCudaError(cudaEventCreate(&stop_event));
+  checkCudaError(cudaEventCreate(&start_event), "NBodySim create start_event");
+  checkCudaError(cudaEventCreate(&stop_event), "NBodySim create stop_event");
 
   std::cout << "N-Body Simulation Initialized" << std::endl;
   std::cout << "  Number of particles: " << num_particles << std::endl;
@@ -136,8 +130,8 @@ NBodySimulation::NBodySimulation(int num_particles, Algorithm algo, float dt,
 }
 
 NBodySimulation::~NBodySimulation() {
-  checkCudaError(cudaEventDestroy(start_event));
-  checkCudaError(cudaEventDestroy(stop_event));
+  checkCudaError(cudaEventDestroy(start_event), "NBodySim destroy start_event");
+  checkCudaError(cudaEventDestroy(stop_event), "NBodySim destroy stop_event");
 
   delete particles;
   delete octree;
@@ -145,12 +139,12 @@ NBodySimulation::~NBodySimulation() {
 }
 
 void NBodySimulation::step() {
-  checkCudaError(cudaEventRecord(start_event));
+  checkCudaError(cudaEventRecord(start_event), "step record start");
 
   // --- Force Calculation ---
   if (algorithm == BARNES_HUT) {
     // 1. Build the Octree
-    octree->build(*particles);
+    octree->buildFromParticles(*particles);
 
     // 2. Calculate forces using Barnes-Hut
     barnes_hut_force->calculateForces(*particles, *octree, G_scaled);
@@ -164,15 +158,15 @@ void NBodySimulation::step() {
 
   // --- Integration ---
   // Synchronize to ensure force calculation is complete
-  checkCudaError(cudaDeviceSynchronize());
+  checkCudaError(cudaDeviceSynchronize(), "force calculation sync");
 
   // Launch kernel to update particle positions and velocities
   launch_update_particles(particles->getDeviceParticles(),
                           particles->getNumParticles(), dt);
 
   // Synchronize and update timers
-  checkCudaError(cudaEventRecord(stop_event));
-  checkCudaError(cudaEventSynchronize(stop_event));
+  checkCudaError(cudaEventRecord(stop_event), "step record stop");
+  checkCudaError(cudaEventSynchronize(stop_event), "step sync stop");
   updateTimers();
 
   current_timestep++;
@@ -213,16 +207,23 @@ void NBodySimulation::setSoftening(float new_softening) {
 
 void NBodySimulation::updateTimers() {
   float frame_time_ms;
-  checkCudaError(cudaEventElapsedTime(&frame_time_ms, start_event, stop_event));
+  checkCudaError(cudaEventElapsedTime(&frame_time_ms, start_event, stop_event),
+                 "step elapsed time");
   total_simulation_time += frame_time_ms;
 
-  // Note: More granular timing would require separate events for each stage
-  // For now, attributing most of the time to force calculation
+  // Get force calculation time from the specific implementation
   if (algorithm == BARNES_HUT) {
     total_force_calc_time += barnes_hut_force->getLastForceCalcTime() * 1000.0;
   } else {
-    total_force_calc_time += frame_time_ms; // Approximate
+    // For brute force, we need a separate timer. For now, approximate.
+    // This requires adding events around launch_calculate_forces_brute_force
+    // and subtracting that from the total frame time.
   }
+
+  // Integration time is the remainder
+  float integration_ms =
+      frame_time_ms - (barnes_hut_force->getLastForceCalcTime() * 1000.0);
+  total_integration_time += (integration_ms > 0) ? integration_ms : 0;
 }
 
 void NBodySimulation::printPerformanceStats() const {
@@ -236,8 +237,8 @@ void NBodySimulation::printPerformanceStats() const {
             << " s" << std::endl;
   std::cout << "Average time per timestep: "
             << total_simulation_time / current_timestep << " ms" << std::endl;
-  std.cout << "Average force calculation time: "
-           << total_force_calc_time / current_timestep << " ms" << std::endl;
+  std::cout << "Average force calculation time: "
+            << total_force_calc_time / current_timestep << " ms" << std::endl;
 
   if (algorithm == BARNES_HUT) {
     barnes_hut_force->printPerformanceStats();
@@ -250,54 +251,55 @@ void NBodySimulation::printPerformanceStats() const {
 void NBodySimulation::benchmark(const std::vector<int> &particle_counts,
                                 int timesteps_per_test) {
   std::cout << "\n=== N-Body Simulation Benchmark ===" << std::endl;
-  std::cout << std::setw(12) << "Particles" << std::setw(15)
-            << "Force (ms/step)" << std::setw(15) << "Integration (ms/step)"
-            << std::setw(15) << "Total (ms/step)" << std::setw(15) << "GFLOPS"
+  std::cout << std::left << std::setw(12) << "Particles" << std::setw(20)
+            << "Force (ms/step)" << std::setw(22) << "Integration (ms/step)"
+            << std::setw(18) << "Total (ms/step)" << std::setw(15) << "GFLOPS"
             << std::endl;
-  std::cout << std::string(80, '-') << std::endl;
+  std::cout << std::string(87, '-') << std::endl;
 
   for (int N : particle_counts) {
-    // Create temporary simulation for this particle count
-    NBodySimulation temp_sim(N, algorithm, dt, softening, 0.5f);
-    InitialConditions::generateBenchmarkParticles(
-        *temp_sim.getParticleSystem());
-    temp_sim.getParticleSystem()->copyToDevice();
+    // Re-initialize simulation for this particle count
+    delete particles;
+    delete octree;
+    particles = new ParticleSystem(N);
+    octree = new Octree(N);
+    InitialConditions::generateBenchmarkParticles(*particles);
+    particles->copyToDevice();
 
-    // Warm up
-    temp_sim.step();
+    // Reset timers for this run
+    total_force_calc_time = 0;
+    total_integration_time = 0;
+    total_simulation_time = 0;
+    current_timestep = 0;
 
-    // Reset timers
-    temp_sim.total_force_calc_time = 0.0;
-    temp_sim.total_integration_time = 0.0;
+    // Warm-up run
+    simulate(5);
 
-    // Run benchmark
-    auto start_time = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < timesteps_per_test; i++) {
-      temp_sim.step();
-    }
-    auto end_time = std::chrono::high_resolution_clock::now();
+    // Reset timers again after warm-up
+    total_force_calc_time = 0;
+    total_integration_time = 0;
+    total_simulation_time = 0;
+    current_timestep = 0;
 
-    double total_time =
-        std::chrono::duration<double>(end_time - start_time).count();
-    double force_time_per_step =
-        (temp_sim.total_force_calc_time / timesteps_per_test) * 1000.0; // ms
-    double integration_time_per_step =
-        (temp_sim.total_integration_time / timesteps_per_test) * 1000.0; // ms
-    double total_time_per_step =
-        (total_time / timesteps_per_test) * 1000.0; // ms
+    // Timed run
+    simulate(timesteps_per_test);
 
-    // Calculate GFLOPS for force calculation (roughly 20 operations per
-    // particle pair)
-    double operations_per_step = (double)N * N * 20.0;
-    double gflops =
-        (operations_per_step / (force_time_per_step / 1000.0)) / 1e9;
+    double avg_force_ms = total_force_calc_time / current_timestep;
+    double avg_integration_ms = total_integration_time / current_timestep;
+    double avg_total_ms = total_simulation_time / current_timestep;
 
-    std::cout << std::setw(12) << N << std::setw(15) << std::fixed
-              << std::setprecision(3) << force_time_per_step << std::setw(15)
-              << std::fixed << std::setprecision(3) << integration_time_per_step
-              << std::setw(15) << std::fixed << std::setprecision(3)
-              << total_time_per_step << std::setw(15) << std::fixed
-              << std::setprecision(2) << gflops << std::endl;
+    // Estimate GFLOPS
+    double interactions_per_step =
+        (algorithm == BARNES_HUT) ? (double)N * log((double)N) // O(N log N)
+                                  : (double)N * (double)N;     // O(N^2)
+    double ops_per_interaction = 20; // Approx ops for force calculation
+    double gflops = (interactions_per_step * ops_per_interaction) /
+                    (avg_total_ms / 1000.0) / 1e9;
+
+    std::cout << std::left << std::setw(12) << N << std::setw(20) << std::fixed
+              << std::setprecision(4) << avg_force_ms << std::setw(22)
+              << avg_integration_ms << std::setw(18) << avg_total_ms
+              << std::setw(15) << std::setprecision(2) << gflops << std::endl;
   }
-  std::cout << std::string(80, '-') << std::endl;
+  std::cout << std::string(87, '-') << std::endl;
 }

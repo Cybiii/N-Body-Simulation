@@ -54,7 +54,7 @@ void BarnesHutForce::calculateForces(ParticleSystem &particles,
   launch_extract_masses(device_particles, d_masses, N);
 
   // Reset accelerations to zero before accumulation
-  launch_reset_accelerations(d_accelerations, N);
+  launch_reset_accelerations_bh(d_accelerations, N);
 
   // Calculate forces using Barnes-Hut algorithm
   launch_barnes_hut_force_calculation(
@@ -135,45 +135,55 @@ barnes_hut_force_kernel(const float3 *positions, const float *masses,
 
     // Vector from particle i to node's center of mass
     float3 r_vec = node.center_of_mass - my_pos;
-    float dist_sq = r_vec.x * r_vec.x + r_vec.y * r_vec.y + r_vec.z * r_vec.z;
+    float dist_sq = dot(r_vec, r_vec);
 
     if (node.isLeaf()) {
-      // It's a leaf node, containing a single particle.
-      // We must calculate direct particle-particle interaction.
-      // But first, ensure it's not the same particle.
-      if (node.particle_idx != i) {
-        // Add softening to prevent infinite forces at close distances
-        float dist = sqrtf(dist_sq + softening_sq);
-        if (dist > 0) {
-          float force_mag =
-              (G_constant * my_mass * node.total_mass) / (dist * dist * dist);
-          acc.x += force_mag * r_vec.x;
-          acc.y += force_mag * r_vec.y;
-          acc.z += force_mag * r_vec.z;
+      // It's a leaf node. Iterate over the particles in this leaf.
+      for (int k = 0; k < node.particle_count; ++k) {
+        int sorted_particle_idx = node.particle_start_idx + k;
+        if (sorted_particle_idx >= N)
+          continue; // Boundary check
+
+        int original_particle_idx = particle_indices[sorted_particle_idx];
+        if (original_particle_idx == i)
+          continue; // Skip self-interaction
+
+        // Direct particle-particle interaction
+        float3 p_pos = positions[original_particle_idx];
+        float3 r_vec_p = p_pos - my_pos;
+        float p_dist_sq = dot(r_vec_p, r_vec_p) + softening_sq;
+
+        if (p_dist_sq > 1e-9f) {
+          float inv_dist = rsqrtf(p_dist_sq);
+          float inv_dist_cubed = inv_dist * inv_dist * inv_dist;
+          float p_mass = masses[original_particle_idx];
+          float force_scalar = G_constant * my_mass * p_mass * inv_dist_cubed;
+          acc += r_vec_p * force_scalar;
         }
       }
     } else {
       // It's an internal node. Check the Barnes-Hut criterion.
-      float3 node_size_vec = node.bounding_box_max - node.bounding_box_min;
-      float node_size =
-          fmaxf(fmaxf(node_size_vec.x, node_size_vec.y), node_size_vec.z);
+      float3 node_size_vec = node.getSize();
+      float node_size_sq =
+          dot(node_size_vec, node_size_vec); // Using squared size
 
-      if ((node_size * node_size) / dist_sq < theta_sq) {
+      // s/d < theta  -> s^2 < d^2 * theta^2
+      if (node_size_sq < dist_sq * theta_sq) {
         // Node is far enough away, approximate it as a single mass.
-        float dist = sqrtf(dist_sq + softening_sq);
-        if (dist > 0) {
+        float dist_with_softening_sq = dist_sq + softening_sq;
+        if (dist_with_softening_sq > 1e-9f) {
+          float inv_dist = rsqrtf(dist_with_softening_sq);
+          float inv_dist_cubed = inv_dist * inv_dist * inv_dist;
           float force_mag =
-              (G_constant * my_mass * node.total_mass) / (dist * dist * dist);
-          acc.x += force_mag * r_vec.x;
-          acc.y += force_mag * r_vec.y;
-          acc.z += force_mag * r_vec.z;
+              G_constant * my_mass * node.total_mass * inv_dist_cubed;
+          acc += r_vec * force_mag;
         }
       } else {
         // Node is too close, traverse its children.
         if (node.first_child_idx >= 0) {
           for (int child = 0; child < 8; ++child) {
             int child_idx = node.first_child_idx + child;
-            if (child_idx < num_nodes && nodes[child_idx].total_mass > 0) {
+            if (child_idx < num_nodes && nodes[child_idx].particle_count > 0) {
               if (!stack.isFull()) {
                 stack.push(child_idx);
               }
@@ -186,17 +196,17 @@ barnes_hut_force_kernel(const float3 *positions, const float *masses,
 
   // Final acceleration is F/m
   if (my_mass > 0.0f) {
-    accelerations[i] =
-        make_float3(acc.x / my_mass, acc.y / my_mass, acc.z / my_mass);
+    acc = acc * (1.0f / my_mass);
   } else {
-    accelerations[i] = make_float3(0.0f, 0.0f, 0.0f);
+    acc = make_float3(0.0f, 0.0f, 0.0f);
   }
+  accelerations[i] = acc;
 }
 
 /**
  * Wrapper functions for kernel launches
  */
-extern "C" void launch_reset_accelerations(float3 *accelerations, int N) {
+extern "C" void launch_reset_accelerations_bh(float3 *accelerations, int N) {
   int threadsPerBlock = 256;
   int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
 

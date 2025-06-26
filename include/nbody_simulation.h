@@ -1,16 +1,21 @@
 #pragma once
 
+#include "barnes_hut_force.h"
+#include "octree.h"
 #include "particle.h"
 #include <chrono>
 #include <cuda_runtime.h>
-
+#include <string>
 
 /**
- * N-Body Simulation class - Phase 1: Brute Force O(N²) implementation
+ * N-Body Simulation class - Upgraded with Barnes-Hut O(N log N)
  */
 class NBodySimulation {
 public:
-  NBodySimulation(int num_particles, float dt = 0.01f, float softening = 0.1f);
+  enum Algorithm { BRUTE_FORCE, BARNES_HUT };
+
+  NBodySimulation(int num_particles, Algorithm algo = BARNES_HUT,
+                  float dt = 0.01f, float softening = 0.1f, float theta = 0.5f);
   ~NBodySimulation();
 
   // Main simulation functions
@@ -26,13 +31,19 @@ public:
   ParticleSystem *getParticleSystem() { return particles; }
   float getDt() const { return dt; }
   float getSoftening() const { return softening; }
+  Algorithm getAlgorithm() const { return algorithm; }
 
   // Setters
   void setDt(float new_dt) { dt = new_dt; }
-  void setSoftening(float new_softening) { softening = new_softening; }
+  void setSoftening(float new_softening);
+  void setAlgorithm(Algorithm new_algo);
 
 private:
   ParticleSystem *particles;
+  Octree *octree;
+  BarnesHutForce *barnes_hut_force;
+  Algorithm algorithm;
+
   float dt;        // Time step
   float softening; // Softening factor to prevent singularities
   int current_timestep;

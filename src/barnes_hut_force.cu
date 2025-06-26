@@ -49,10 +49,11 @@ void BarnesHutForce::calculateForces(ParticleSystem &particles,
   checkCudaError(cudaMalloc(&d_accelerations, N * sizeof(float3)),
                  "accelerations for Barnes-Hut");
 
-  // Extract data from particles (this would need a proper kernel)
-  // For now, we'll assume the data is extracted
+  // Extract data from the main particle buffer into temporary flat arrays
+  launch_extract_positions(device_particles, d_positions, N);
+  launch_extract_masses(device_particles, d_masses, N);
 
-  // Reset accelerations
+  // Reset accelerations to zero before accumulation
   launch_reset_accelerations(d_accelerations, N);
 
   // Calculate forces using Barnes-Hut algorithm
@@ -63,9 +64,9 @@ void BarnesHutForce::calculateForces(ParticleSystem &particles,
       softening * softening, // softening squared
       G_constant);
 
-  // Copy accelerations back to particles using utility kernel
-  launch_update_accelerations_reordered(device_particles, d_accelerations,
-                                        octree.getDeviceParticleIndices(), N);
+  // The new kernel computes accelerations in the original particle order.
+  // Therefore, we use the simple update kernel, not the reordered one.
+  launch_update_accelerations(device_particles, d_accelerations, N);
 
   // Record end time
   checkCudaError(cudaEventRecord(stop_event), "record Barnes-Hut stop event");
@@ -112,26 +113,19 @@ barnes_hut_force_kernel(const float3 *positions, const float *masses,
                         float3 *accelerations, int N, const OctreeNode *nodes,
                         int num_nodes, const int *particle_indices,
                         float theta_sq, float softening_sq, float G_constant) {
-  int particle_idx = blockIdx.x * blockDim.x + threadIdx.x;
-  if (particle_idx >= N)
+  int i = blockIdx.x * blockDim.x + threadIdx.x;
+  if (i >= N)
     return;
 
-  // Get the actual particle index (after sorting)
-  int actual_idx =
-      particle_indices ? particle_indices[particle_idx] : particle_idx;
+  float3 my_pos = positions[i];
+  float my_mass = masses[i];
+  float3 acc = make_float3(0.0f, 0.0f, 0.0f);
 
-  float3 particle_pos = positions[actual_idx];
-  float3 total_force = make_float3(0.0f, 0.0f, 0.0f);
-
-  // Stack for tree traversal
   TraversalStack stack;
-
-  // Start traversal from root node (assuming node 0 is root)
   if (num_nodes > 0) {
-    stack.push(0);
+    stack.push(0); // Start traversal at the root (node 0)
   }
 
-  // Tree traversal loop
   while (!stack.isEmpty()) {
     int node_idx = stack.pop();
     if (node_idx < 0 || node_idx >= num_nodes)
@@ -139,54 +133,63 @@ barnes_hut_force_kernel(const float3 *positions, const float *masses,
 
     const OctreeNode &node = nodes[node_idx];
 
-    // Calculate distance from particle to node's center of mass
-    float3 r_vec = make_float3(node.center_of_mass.x - particle_pos.x,
-                               node.center_of_mass.y - particle_pos.y,
-                               node.center_of_mass.z - particle_pos.z);
+    // Vector from particle i to node's center of mass
+    float3 r_vec = node.center_of_mass - my_pos;
+    float dist_sq = r_vec.x * r_vec.x + r_vec.y * r_vec.y + r_vec.z * r_vec.z;
 
-    float r_sq = r_vec.x * r_vec.x + r_vec.y * r_vec.y + r_vec.z * r_vec.z;
-    float r = sqrtf(r_sq + softening_sq);
-
-    // Get node size (approximate)
-    float3 node_size =
-        make_float3(node.bounding_box_max.x - node.bounding_box_min.x,
-                    node.bounding_box_max.y - node.bounding_box_min.y,
-                    node.bounding_box_max.z - node.bounding_box_min.z);
-    float max_size = fmaxf(fmaxf(node_size.x, node_size.y), node_size.z);
-
-    // Barnes-Hut criterion: s/d < θ
-    bool use_approximation = (max_size * max_size) / r_sq < theta_sq;
-
-    if (node.isLeaf() || use_approximation) {
-      // Use this node's center of mass for force calculation
-      if (node.total_mass > 0.0f && r > 0.0f) {
-        float force_magnitude = G_constant * node.total_mass / (r * r * r);
-
-        total_force.x += force_magnitude * r_vec.x;
-        total_force.y += force_magnitude * r_vec.y;
-        total_force.z += force_magnitude * r_vec.z;
+    if (node.isLeaf()) {
+      // It's a leaf node, containing a single particle.
+      // We must calculate direct particle-particle interaction.
+      // But first, ensure it's not the same particle.
+      if (node.particle_idx != i) {
+        // Add softening to prevent infinite forces at close distances
+        float dist = sqrtf(dist_sq + softening_sq);
+        if (dist > 0) {
+          float force_mag =
+              (G_constant * my_mass * node.total_mass) / (dist * dist * dist);
+          acc.x += force_mag * r_vec.x;
+          acc.y += force_mag * r_vec.y;
+          acc.z += force_mag * r_vec.z;
+        }
       }
     } else {
-      // Add children to stack for further traversal
-      // In a complete implementation, we'd traverse all 8 children
-      // For now, this is a simplified version
-      if (node.first_child_idx >= 0) {
-        for (int child = 0; child < 8; child++) {
-          int child_idx = node.first_child_idx + child;
-          if (child_idx < num_nodes && !stack.isFull()) {
-            stack.push(child_idx);
+      // It's an internal node. Check the Barnes-Hut criterion.
+      float3 node_size_vec = node.bounding_box_max - node.bounding_box_min;
+      float node_size =
+          fmaxf(fmaxf(node_size_vec.x, node_size_vec.y), node_size_vec.z);
+
+      if ((node_size * node_size) / dist_sq < theta_sq) {
+        // Node is far enough away, approximate it as a single mass.
+        float dist = sqrtf(dist_sq + softening_sq);
+        if (dist > 0) {
+          float force_mag =
+              (G_constant * my_mass * node.total_mass) / (dist * dist * dist);
+          acc.x += force_mag * r_vec.x;
+          acc.y += force_mag * r_vec.y;
+          acc.z += force_mag * r_vec.z;
+        }
+      } else {
+        // Node is too close, traverse its children.
+        if (node.first_child_idx >= 0) {
+          for (int child = 0; child < 8; ++child) {
+            int child_idx = node.first_child_idx + child;
+            if (child_idx < num_nodes && nodes[child_idx].total_mass > 0) {
+              if (!stack.isFull()) {
+                stack.push(child_idx);
+              }
+            }
           }
         }
       }
     }
   }
 
-  // Convert force to acceleration and store
-  float particle_mass = masses[actual_idx];
-  if (particle_mass > 0.0f) {
-    accelerations[actual_idx] = make_float3(total_force.x / particle_mass,
-                                            total_force.y / particle_mass,
-                                            total_force.z / particle_mass);
+  // Final acceleration is F/m
+  if (my_mass > 0.0f) {
+    accelerations[i] =
+        make_float3(acc.x / my_mass, acc.y / my_mass, acc.z / my_mass);
+  } else {
+    accelerations[i] = make_float3(0.0f, 0.0f, 0.0f);
   }
 }
 
@@ -206,12 +209,14 @@ extern "C" void launch_barnes_hut_force_calculation(
     const float3 *positions, const float *masses, float3 *accelerations, int N,
     const OctreeNode *nodes, int num_nodes, const int *particle_indices,
     float theta_sq, float softening_sq, float G_constant) {
+
+  // This kernel launch is simplified because we are not reordering inside.
+  // The reordering is handled by the data extraction and final update steps.
+  // Therefore, the kernel can operate on flat, unsorted arrays directly.
   int threadsPerBlock = 256;
   int blocksPerGrid = (N + threadsPerBlock - 1) / threadsPerBlock;
 
   barnes_hut_force_kernel<<<blocksPerGrid, threadsPerBlock>>>(
       positions, masses, accelerations, N, nodes, num_nodes, particle_indices,
       theta_sq, softening_sq, G_constant);
-  checkCudaError(cudaGetLastError(),
-                 "Barnes-Hut force calculation kernel launch");
 }

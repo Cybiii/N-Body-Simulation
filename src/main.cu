@@ -5,6 +5,7 @@
 
 #include <cuda_runtime.h>
 
+#include "errors.h"
 #include "initial_conditions.h"
 #include "nbody_simulation.h"
 #include "renderer.h"
@@ -41,13 +42,17 @@ int main(int argc, char *argv[]) {
 
     NBodySimulation simulation(num_particles, NBodySimulation::BARNES_HUT);
     InitialConditions::generateRandomSphere(*simulation.getParticleSystem(),
-                                            5.0f, 1.0f, {0.5f, 2.0f});
+                                            5.0f, 0.0f, {5.0f, 20.0f});
 
     simulation.getParticleSystem()->copyToDevice();
 
     Renderer renderer(1280, 720, "N-Body Simulation");
 
     while (!renderer.shouldClose()) {
+      // Handle input and pass simulation object
+      renderer.processInput(simulation);
+
+      // Begin the frame
       renderer.beginFrame();
 
       // Update the simulation by one step
@@ -57,7 +62,8 @@ int main(int argc, char *argv[]) {
       renderer.renderParticles(*simulation.getParticleSystem(),
                                simulation.getParticleCount());
 
-      renderer.endFrame();
+      // End the frame, passing time scale for UI
+      renderer.endFrame(simulation.getTimeScale());
     }
   } catch (const std::exception &e) {
     std::cerr << "An error occurred: " << e.what() << std::endl;

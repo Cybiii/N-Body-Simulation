@@ -52,6 +52,7 @@ add_executable(nbody_simulation
   src/renderer.cpp
   src/render_kernel.cu
   ${SIM_SOURCES}
+  src/boundaries.cu
 )
 
 # Manually link graphics libraries
@@ -71,7 +72,7 @@ set_property(TARGET nbody_simulation PROPERTY CUDA_SEPARABLE_COMPILATION ON)
 add_custom_command(
     TARGET nbody_simulation POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy_directory
-    ${CMAKE_SOURCE_DIR}/shaders ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/shaders
+    ${CMAKE_SOURCE_DIR}/shaders $<TARGET_FILE_DIR:nbody_simulation>/shaders
     COMMENT "Copying shaders to output directory"
 )
 
@@ -79,6 +80,7 @@ add_custom_command(
 add_executable(benchmark
   src/benchmark.cu
   ${SIM_SOURCES}
+  src/boundaries.cu
 )
 target_link_libraries(benchmark PRIVATE ${CUDA_LIBRARIES})
 set_target_properties(benchmark PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)

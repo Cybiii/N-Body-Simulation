@@ -43,6 +43,10 @@ public:
   void setSoftening(float new_softening);
   void setAlgorithm(Algorithm new_algo);
 
+  void increaseTimeScale();
+  void decreaseTimeScale();
+  float getTimeScale() const;
+
 private:
   ParticleSystem *particles;
   Octree *octree;
@@ -61,6 +65,8 @@ private:
 
   // CUDA events for timing
   cudaEvent_t start_event, stop_event;
+
+  float time_scale = 1.0f;
 
   void updateTimers();
 };

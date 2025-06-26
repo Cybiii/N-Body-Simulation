@@ -1,3 +1,4 @@
+#include "boundaries.h"
 #include "initial_conditions.h"
 #include "nbody_simulation.h"
 #include <iomanip>
@@ -108,22 +109,23 @@ extern "C" void launch_update_particles(Particle *d_particles, int N,
 /**
  * NBodySimulation class implementation
  */
-NBodySimulation::NBodySimulation(int num_particles, Algorithm algo, float dt,
-                                 float softening, float theta)
-    : algorithm(algo), dt(dt), softening(softening), current_timestep(0),
+NBodySimulation::NBodySimulation(int num_particles_in, Algorithm algo,
+                                 float dt_in, float softening_in,
+                                 float theta_in)
+    : algorithm(algo), dt(dt_in), softening(softening_in), current_timestep(0),
       total_simulation_time(0.0), total_force_calc_time(0.0),
-      total_integration_time(0.0) {
+      total_integration_time(0.0), time_scale(1.0f) {
 
-  particles = new ParticleSystem(num_particles);
-  octree = new Octree(num_particles);
-  barnes_hut_force = new BarnesHutForce(theta, softening);
+  particles = new ParticleSystem(num_particles_in);
+  octree = new Octree(particles->getNumParticles());
+  barnes_hut_force = new BarnesHutForce(theta_in, softening_in);
 
-  // Create CUDA events for timing
   checkCudaError(cudaEventCreate(&start_event), "NBodySim create start_event");
   checkCudaError(cudaEventCreate(&stop_event), "NBodySim create stop_event");
 
   std::cout << "N-Body Simulation Initialized" << std::endl;
-  std::cout << "  Number of particles: " << num_particles << std::endl;
+  std::cout << "  Number of particles: " << particles->getNumParticles()
+            << std::endl;
   std::cout << "  Algorithm: "
             << (algorithm == BARNES_HUT ? "Barnes-Hut" : "Brute-Force")
             << std::endl;
@@ -132,7 +134,6 @@ NBodySimulation::NBodySimulation(int num_particles, Algorithm algo, float dt,
 NBodySimulation::~NBodySimulation() {
   checkCudaError(cudaEventDestroy(start_event), "NBodySim destroy start_event");
   checkCudaError(cudaEventDestroy(stop_event), "NBodySim destroy stop_event");
-
   delete particles;
   delete octree;
   delete barnes_hut_force;
@@ -141,34 +142,27 @@ NBodySimulation::~NBodySimulation() {
 void NBodySimulation::step() {
   checkCudaError(cudaEventRecord(start_event), "step record start");
 
-  // --- Force Calculation ---
   if (algorithm == BARNES_HUT) {
-    // 1. Build the Octree
     octree->buildFromParticles(*particles);
-
-    // 2. Calculate forces using Barnes-Hut
     barnes_hut_force->calculateForces(*particles, *octree, G_scaled);
-
-  } else { // BRUTE_FORCE
-    // O(N^2) direct force calculation
+  } else {
     launch_calculate_forces_brute_force(particles->getDeviceParticles(),
                                         particles->getNumParticles(),
                                         softening * softening, G_scaled);
   }
 
-  // --- Integration ---
-  // Synchronize to ensure force calculation is complete
   checkCudaError(cudaDeviceSynchronize(), "force calculation sync");
 
-  // Launch kernel to update particle positions and velocities
   launch_update_particles(particles->getDeviceParticles(),
-                          particles->getNumParticles(), dt);
+                          particles->getNumParticles(), dt * time_scale);
 
-  // Synchronize and update timers
+  // Enforce boundary conditions with a smaller boundary
+  launch_enforce_boundaries(particles->getDeviceParticles(),
+                            particles->getNumParticles(), 25.0f);
+
   checkCudaError(cudaEventRecord(stop_event), "step record stop");
   checkCudaError(cudaEventSynchronize(stop_event), "step sync stop");
   updateTimers();
-
   current_timestep++;
 }
 
@@ -307,3 +301,18 @@ void NBodySimulation::benchmark(const std::vector<int> &particle_counts,
   }
   std::cout << std::string(87, '-') << std::endl;
 }
+
+void NBodySimulation::increaseTimeScale() {
+  time_scale *= 1.2f;
+  printf("Time scale increased to: %.2fx\n", time_scale);
+}
+
+void NBodySimulation::decreaseTimeScale() {
+  time_scale /= 1.2f;
+  if (time_scale < 0.1f) {
+    time_scale = 0.1f;
+  }
+  printf("Time scale decreased to: %.2fx\n", time_scale);
+}
+
+float NBodySimulation::getTimeScale() const { return time_scale; }

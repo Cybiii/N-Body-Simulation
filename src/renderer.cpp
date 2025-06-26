@@ -171,20 +171,21 @@ void Renderer::beginFrame() {
   delta_time = current_time - last_frame_time;
   last_frame_time = current_time;
 
-  // Handle user input
-  processInput();
+  // Handle user input - This is now called from main loop
+  // processInput();
 
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
-void Renderer::endFrame() {
+void Renderer::endFrame(float time_scale) {
   // FPS calculation
   frame_count++;
   double current_time = glfwGetTime();
   if (current_time - last_fps_update_time >= 1.0) { // Update every second
     char title_buffer[256];
-    sprintf(title_buffer, "N-Body Simulation | %d Particles | FPS: %d", 8192,
-            frame_count);
+    sprintf(title_buffer,
+            "N-Body Simulation | %d Particles | FPS: %d | Time Scale: %.2fx",
+            8192, frame_count, time_scale);
     glfwSetWindowTitle(window, title_buffer);
     frame_count = 0;
     last_fps_update_time = current_time;
@@ -193,6 +194,9 @@ void Renderer::endFrame() {
   // Swap buffers and poll events
   glfwSwapBuffers(window);
   glfwPollEvents();
+
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
+  glBindVertexArray(0);
 }
 
 // Stub for now
@@ -268,9 +272,11 @@ void Renderer::setupCallbacks() {
   glfwSetFramebufferSizeCallback(window, framebuffer_size_callback);
   glfwSetCursorPosCallback(window, mouse_callback);
   glfwSetScrollCallback(window, scroll_callback);
+  // Disable cursor to hide it and lock it to the window
+  glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 }
 
-void Renderer::processInput() {
+void Renderer::processInput(NBodySimulation &simulation) {
   if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
     glfwSetWindowShouldClose(window, true);
 
@@ -295,6 +301,14 @@ void Renderer::processInput() {
     camera_pos += camera_up * current_move_speed;
   if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
     camera_pos -= camera_up * current_move_speed;
+
+  // Time scale controls
+  if (glfwGetKey(window, GLFW_KEY_EQUAL) == GLFW_PRESS) { // '+' key
+    simulation.increaseTimeScale();
+  }
+  if (glfwGetKey(window, GLFW_KEY_MINUS) == GLFW_PRESS) { // '-' key
+    simulation.decreaseTimeScale();
+  }
 }
 
 // --- GLFW Callbacks ---

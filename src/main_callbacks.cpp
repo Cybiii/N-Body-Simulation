@@ -16,6 +16,6 @@ void run_simulation_with_gui(NBodySimulation &sim) {
     renderer.renderParticles(*sim.getParticleSystem(),
                              sim.getParticleSystem()->getNumParticles());
 
-    renderer.endFrame();
+    renderer.endFrame(sim.getTimeScale());
   }
 }

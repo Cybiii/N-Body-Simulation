@@ -2,6 +2,8 @@
 
 A high-performance GPU-accelerated N-body gravitational simulation implementing the Barnes-Hut algorithm for O(N log N) complexity. This project uses CUDA development techniques and parallel algorithms, capable of simulating up to **1 million particles simultaneously** on modern NVIDIA GPUs.
 
+<video src="public/N-Bodys.mp4" width="100%" controls="true" autoplay="true" muted="true" loop="true" type="video/mp4"></video>
+
 ## Overview
 
 This simulation calculates gravitational forces between particles using two approaches:
